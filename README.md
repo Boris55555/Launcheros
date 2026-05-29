@@ -1,19 +1,19 @@
 # Launcheros
 
-Launcheros on minimalistinen Android-käynnistysohjelma (launcher), joka on suunniteltu nimenomaan **Mudita Kompakt** -puhelimelle. Se noudattaa laitteen alkuperäistä ja selkeää muotokieltä, mutta tuo mukanaan odotettuja lisäominaisuuksia tehopäivittäjille.
+Launcheros is a minimalist Android launcher specifically designed for the **Mudita Kompakt** phone. It follows the device's original and clean design language while introducing highly requested features for power users.
 
-## Ominaisuudet
+## Features
 
--   **Minimalistinen muotoilu:** Seuraa tarkasti Mudita Kompaktin alkuperäistä launcher-tyyliä ja minimalistista estetiikkaa.
--   **Laajennetut ilmoitukset:** Mahdollistaa ilmoitusten vastaanottamisen ja näyttämisen myös kolmannen osapuolen sovelluksilta, mikä parantaa laitteen käytettävyyttä arkikäytössä.
--   **Älykäs ilmoitusnäkymä:** Suodattaa turhat ilmoitukset ja ryhmittelee tärkeät tapahtumat (puhelut, viestit, media) selkeäksi kokonaisuudeksi.
--   **Integroitu minisoitin:** Hallitse musiikkia ja podcasteja suoraan päänäkymästä minimalistisella ohjauspalkilla.
--   **Sovellusten hallinta:** Mahdollisuus piilottaa sovelluksia ja nimetä niitä uudelleen vastaamaan omaa tyyliäsi.
--   **Syntymäpäivämuistutukset:** Sisäänrakennettu tuki syntymäpäivien seurannalle ja ilmoituksille.
+-   **Minimalist Design:** Closely follows the original Mudita Kompakt launcher style and minimalist aesthetics.
+-   **Expanded Notifications:** Allows receiving and displaying notifications from third-party applications, improving usability for everyday needs.
+-   **Smart Notification View:** Filters unnecessary noise and groups important events (calls, messages, media) into a clear overview.
+-   **Integrated Mini Player:** Control music and podcasts directly from the home screen with a minimalist control bar.
+-   **App Management:** Ability to hide apps and rename them to match your personal style.
+-   **Birthday Reminders:** Built-in support for tracking and notifying you about upcoming birthdays.
 
-## Lisenssi
+## License
 
-Tämä projekti on lisensoitu **Apache License 2.0** -lisenssillä. Katso tarkemmat tiedot [LICENSE](LICENSE)-tiedostosta.
+This project is licensed under the **Apache License 2.0**. See the [LICENSE](LICENSE) file for more details.
 
 ---
 
