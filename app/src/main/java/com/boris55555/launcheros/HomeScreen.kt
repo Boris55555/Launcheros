@@ -55,12 +55,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccessAlarm
+import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.ArrowDropUp
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.HistoryEdu
 import androidx.compose.material.icons.filled.Pets
+import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.Sms
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
@@ -84,9 +87,6 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.boris55555.launcheros.birthdays.BirthdaysRepository
-import androidx.compose.material.icons.filled.Apps
-import androidx.compose.material.icons.filled.Sms
-import androidx.compose.material.icons.filled.Phone
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -143,42 +143,41 @@ fun MainHomeScreen(
 ) {
     val context = LocalContext.current
     val packageManager = context.packageManager
-    var showRefreshOverlay by remember { mutableStateOf(false) }
-
-    val favoritePackages by favoritesRepository.favorites.collectAsState()
+    val customNames by favoritesRepository.customNames.collectAsState()
+    val favorites by favoritesRepository.favorites.collectAsState()
     val favoriteCount by favoritesRepository.favoriteCount.collectAsState()
+    val batteryThreshold by favoritesRepository.batteryThreshold.collectAsState()
     val alarmAppPackage by favoritesRepository.alarmAppPackage.collectAsState()
     val calendarAppPackage by favoritesRepository.calendarAppPackage.collectAsState()
     val isHomeLocked by favoritesRepository.isHomeLocked.collectAsState()
-    val customNames by favoritesRepository.customNames.collectAsState()
-    val birthdays by birthdaysRepository.birthdays.collectAsState()
-    val gesturesEnabled by favoritesRepository.gesturesEnabled.collectAsState()
-    val swipeLeftAction by favoritesRepository.swipeLeftAction.collectAsState()
-    val swipeRightAction by favoritesRepository.swipeRightAction.collectAsState()
-    val keepAllAppsButton = true // Always on
+    val use24hFormat by favoritesRepository.use24hFormat.collectAsState()
     val showAppIcons by favoritesRepository.showAppIcons.collectAsState()
-    val showNotificationPreviews by favoritesRepository.showNotificationPreviews.collectAsState()
-    val sexyMode by favoritesRepository.sexyMode.collectAsState()
-    val sexyAlignment by favoritesRepository.sexyAlignment.collectAsState()
-    val enableCameraShortcut = true // Always on
-    val showNotesButton by favoritesRepository.showNotesButton.collectAsState()
+    val birthdays by birthdaysRepository.birthdays.collectAsState()
     val homeNote by favoritesRepository.homeNote.collectAsState()
     val homeNoteTitle by favoritesRepository.homeNoteTitle.collectAsState()
-    val fontSizeHome by favoritesRepository.fontSizeHome.collectAsState()
-    val use24hFormat by favoritesRepository.use24hFormat.collectAsState()
+    val showNotesButton by favoritesRepository.showNotesButton.collectAsState()
 
-    val fontSizeAdjustment = when (fontSizeHome) {
-        "Small" -> -2
-        "Big" -> 2
-        else -> 0
+    val batteryLevel by context.batteryLevel().collectAsState(initial = null)
+    val signalLevel by context.signalLevel().collectAsState(initial = 0)
+
+    var showRefreshOverlay by remember { mutableStateOf(false) }
+    var showEditNoteDialog by remember { mutableStateOf(false) }
+    var tempShowBatteryPercentage by remember { mutableStateOf(false) }
+
+    LaunchedEffect(tempShowBatteryPercentage) {
+        if (tempShowBatteryPercentage) {
+            delay(3000)
+            tempShowBatteryPercentage = false
+        }
     }
 
-    val favoriteApps = remember(favoritePackages, customNames) {
-        favoritePackages.map { pkgName ->
-            if (pkgName == null) null
-            else {
+    val preferredApps = remember(favorites, customNames) {
+        favorites.map { pkgName ->
+            if (pkgName == null) {
+                AppInfo("", "", isSystemApp = false)
+            } else {
                 try {
-                    val intent = Intent(Intent.ACTION_MAIN, null).apply {
+                    val intent = Intent(Intent.ACTION_MAIN).apply {
                         addCategory(Intent.CATEGORY_LAUNCHER)
                         `package` = pkgName
                     }
@@ -339,14 +338,11 @@ fun MainHomeScreen(
             
             nextAlarmTime = SimpleDateFormat("HH:mm", Locale.getDefault()).format(alarmCalendar.time)
             
+            val diffDays = alarmCalendar.get(Calendar.DAY_OF_YEAR) - now.get(Calendar.DAY_OF_YEAR)
             nextAlarmDay = when {
-                now.get(Calendar.YEAR) == alarmCalendar.get(Calendar.YEAR) &&
-                now.get(Calendar.DAY_OF_YEAR) == alarmCalendar.get(Calendar.DAY_OF_YEAR) -> null
-                
-                now.get(Calendar.YEAR) == alarmCalendar.get(Calendar.YEAR) &&
-                now.get(Calendar.DAY_OF_YEAR) + 1 == alarmCalendar.get(Calendar.DAY_OF_YEAR) -> "Tomorrow"
-                
-                else -> SimpleDateFormat("EEE", Locale.getDefault()).format(alarmCalendar.time)
+                diffDays == 0 -> null
+                diffDays == 1 || (diffDays < 0 && diffDays > -360) -> "Tomorrow"
+                else -> SimpleDateFormat("EEEE", Locale.getDefault()).format(alarmCalendar.time)
             }
         } else {
             nextAlarmTime = null
@@ -354,36 +350,23 @@ fun MainHomeScreen(
         }
     }
 
-    DisposableEffect(context) {
-        val receiver = AlarmUpdateReceiver(::updateAlarm)
-        context.registerReceiver(receiver, IntentFilter("android.app.action.NEXT_ALARM_CLOCK_CHANGED"))
-        updateAlarm() // Initial update
-        onDispose { context.unregisterReceiver(receiver) }
-    }
-
-    if (currentPage >= pageCount) {
-        onCurrentPageChanged(0)
-    }
-
-    val batteryLevel by context.batteryLevel().collectAsState(initial = null)
-    val signalLevel by context.signalLevel().collectAsState(initial = 0)
-    var showStatusDetails by remember { mutableStateOf(false) }
-
-    LaunchedEffect(showStatusDetails) {
-        if (showStatusDetails) {
-            delay(3000)
-            showStatusDetails = false
+    LaunchedEffect(Unit) {
+        updateAlarm()
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                updateAlarm()
+            }
         }
+        context.registerReceiver(receiver, IntentFilter("android.app.action.NEXT_ALARM_CLOCK_CHANGED"))
     }
-    var favoritesArea by remember { mutableStateOf<Rect?>(null) }
-    var showEditNoteDialog by remember { mutableStateOf(false) }
 
     if (showEditNoteDialog) {
         var tempTitle by remember { mutableStateOf(homeNoteTitle) }
         var tempContent by remember { mutableStateOf(homeNote) }
+
         AlertDialog(
             onDismissRequest = { showEditNoteDialog = false },
-            title = { Text("Edit Home Note", color = Color.Black) },
+            title = { Text("Edit Note", color = Color.Black) },
             text = {
                 Column {
                     OutlinedTextField(
@@ -391,12 +374,11 @@ fun MainHomeScreen(
                         onValueChange = { tempTitle = it },
                         label = { Text("Title") },
                         modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Color.Black,
-                            unfocusedBorderColor = Color.Black,
                             focusedTextColor = Color.Black,
-                            unfocusedTextColor = Color.Black
+                            unfocusedTextColor = Color.Black,
+                            focusedBorderColor = Color.Black,
+                            unfocusedBorderColor = Color.Black
                         )
                     )
                     Spacer(modifier = Modifier.height(8.dp))
@@ -406,30 +388,24 @@ fun MainHomeScreen(
                         label = { Text("Content") },
                         modifier = Modifier.fillMaxWidth().height(150.dp),
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Color.Black,
-                            unfocusedBorderColor = Color.Black,
                             focusedTextColor = Color.Black,
-                            unfocusedTextColor = Color.Black
+                            unfocusedTextColor = Color.Black,
+                            focusedBorderColor = Color.Black,
+                            unfocusedBorderColor = Color.Black
                         )
                     )
                 }
             },
             confirmButton = {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     EInkButton(onClick = {
-                        tempTitle = ""
-                        tempContent = ""
                         favoritesRepository.saveHomeNoteTitle("")
                         favoritesRepository.saveHomeNote("")
                         showEditNoteDialog = false
                     }) {
                         Text("Clear")
                     }
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.weight(1f))
                     EInkButton(onClick = { showEditNoteDialog = false }) {
                         Text("Cancel")
                     }
@@ -517,36 +493,37 @@ fun MainHomeScreen(
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(text = "LTE", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.Black)
                 }
-                BatteryIcon(batteryLevel)
+                val batteryThresholdState by favoritesRepository.batteryThreshold.collectAsState()
+                Box(modifier = Modifier.clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null
+                ) {
+                    tempShowBatteryPercentage = true
+                }) {
+                    BatteryIcon(batteryLevel, batteryThresholdState, tempShowBatteryPercentage)
+                }
             }
 
             // Central Section: Clock and Date
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Top, // Changed from Center to Top
+                verticalArrangement = Arrangement.Top,
                 modifier = Modifier
                     .weight(1f)
-                    .padding(top = 24.dp) // Reduced padding to move it higher
+                    .padding(top = 24.dp)
             ) {
                 // Next Alarm (Above Clock)
                 if (nextAlarmTime != null) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.clickable {
-                            alarmAppPackage?.let { pkg ->
-                                val intent = packageManager.getLaunchIntentForPackage(pkg)
-                                if (intent != null) {
-                                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                    context.startActivity(intent)
-                                }
-                            }
-                        }
+                        horizontalArrangement = Arrangement.Center,
+                        modifier = Modifier.padding(bottom = 8.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.AccessAlarm,
-                            contentDescription = null,
-                            tint = Color.Black,
-                            modifier = Modifier.size(24.dp)
+                            contentDescription = "Next Alarm",
+                            modifier = Modifier.size(16.dp),
+                            tint = Color.Black
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
@@ -662,7 +639,7 @@ fun MainHomeScreen(
                         val age = ChronoUnit.YEARS.between(birthday.date, today)
                         Text(
                             text = "🎂 ${birthday.name} ($age)",
-                            fontSize = 18.sp,
+                            fontSize = 24.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color.Black
                         )
@@ -748,6 +725,41 @@ fun MainHomeScreen(
                     icon = Icons.Default.Apps,
                     label = "Apps",
                     onClick = onShowAllAppsClicked
+                )
+            }
+        }
+
+        val showCameraShortcut by favoritesRepository.showCameraShortcut.collectAsState()
+        if (showCameraShortcut) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(bottom = 16.dp, end = 16.dp)
+                    .size(48.dp)
+                    .border(2.dp, Color.Black, CircleShape)
+                    .background(Color.White, CircleShape)
+                    .clickable {
+                        val intent = Intent(android.provider.MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA)
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        try {
+                            context.startActivity(intent)
+                        } catch (e: Exception) {
+                            // Fallback if specific intent fails
+                            val launchIntent = packageManager.getLaunchIntentForPackage("com.mudita.camera")
+                                ?: packageManager.getLaunchIntentForPackage("com.android.camera")
+                            if (launchIntent != null) {
+                                launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                context.startActivity(launchIntent)
+                            }
+                        }
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.CameraAlt,
+                    contentDescription = "Camera",
+                    tint = Color.Black,
+                    modifier = Modifier.size(24.dp)
                 )
             }
         }
@@ -913,8 +925,16 @@ fun SignalIcon(level: Int) {
 }
 
 @Composable
-fun BatteryIcon(state: BatteryState?) {
+fun BatteryIcon(state: BatteryState?, threshold: Int, forceShow: Boolean = false) {
     if (state == null) return
+    
+    val shouldShowPercentage = when {
+        forceShow -> true
+        threshold >= 100 -> true
+        threshold < 0 -> false
+        else -> state.level <= threshold || state.isCharging
+    }
+
     Row(verticalAlignment = Alignment.CenterVertically) {
         if (state.isCharging) {
             Icon(
@@ -925,8 +945,11 @@ fun BatteryIcon(state: BatteryState?) {
             )
             Spacer(modifier = Modifier.width(2.dp))
         }
-        Text(text = "${state.level}%", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.Black)
-        Spacer(modifier = Modifier.width(6.dp))
+        
+        if (shouldShowPercentage) {
+            Text(text = "${state.level}%", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+            Spacer(modifier = Modifier.width(6.dp))
+        }
         
         Row(verticalAlignment = Alignment.CenterVertically) {
             // Battery Body

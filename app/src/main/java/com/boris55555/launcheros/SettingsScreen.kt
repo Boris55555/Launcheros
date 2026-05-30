@@ -12,6 +12,7 @@ import androidx.activity.compose.ManagedActivityResultLauncher
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -104,6 +105,7 @@ fun SettingsScreen(
     val weekStartsOnSunday by favoritesRepository.weekStartsOnSunday.collectAsState()
     val disableDuraSpeedNotifications by favoritesRepository.disableDuraSpeedNotifications.collectAsState()
     val use24hFormat by favoritesRepository.use24hFormat.collectAsState()
+    val showCameraShortcut by favoritesRepository.showCameraShortcut.collectAsState()
     val showNotificationPreviews by favoritesRepository.showNotificationPreviews.collectAsState()
     val notificationMaxCharacters by favoritesRepository.notificationMaxCharacters.collectAsState()
 
@@ -549,6 +551,10 @@ fun HomeScreenSection(
     use24hFormat: Boolean,
     eInkSwitchColors: androidx.compose.material3.SwitchColors
 ) {
+    val batteryThreshold by favoritesRepository.batteryThreshold.collectAsState()
+    val showCameraShortcut by favoritesRepository.showCameraShortcut.collectAsState()
+    var showBatteryDropdown by remember { mutableStateOf(false) }
+
     Spacer(modifier = Modifier.height(32.dp))
     Text("Homescreen settings", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.Black)
     Spacer(modifier = Modifier.height(8.dp))
@@ -567,6 +573,68 @@ fun HomeScreenSection(
             onCheckedChange = { favoritesRepository.saveUse24hFormat(it) },
             colors = eInkSwitchColors
         )
+    }
+
+    HorizontalDivider(color = Color.Black)
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text("Show Camera shortcut", fontSize = 18.sp, color = Color.Black)
+        Switch(
+            checked = showCameraShortcut,
+            onCheckedChange = { favoritesRepository.saveShowCameraShortcut(it) },
+            colors = eInkSwitchColors
+        )
+    }
+
+    HorizontalDivider(color = Color.Black)
+
+    Column {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { showBatteryDropdown = true }
+                .padding(vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text("Show battery percentage", fontSize = 18.sp, color = Color.Black)
+            val currentText = when {
+                batteryThreshold >= 100 -> "Always"
+                batteryThreshold < 0 -> "Never"
+                else -> "Below $batteryThreshold%"
+            }
+            Text(currentText, color = Color.Black)
+        }
+
+        DropdownMenu(
+            expanded = showBatteryDropdown,
+            onDismissRequest = { showBatteryDropdown = false },
+            modifier = Modifier.background(Color.White)
+        ) {
+            listOf(
+                "Always" to 100,
+                "Below 50%" to 50,
+                "Below 40%" to 40,
+                "Below 30%" to 30,
+                "Below 20%" to 20,
+                "Below 10%" to 10,
+                "Never" to -1
+            ).forEach { (label, value) ->
+                DropdownMenuItem(
+                    text = { Text(label, color = Color.Black) },
+                    onClick = {
+                        favoritesRepository.saveBatteryThreshold(value)
+                        showBatteryDropdown = false
+                    }
+                )
+            }
+        }
     }
 
     HorizontalDivider(color = Color.Black)
