@@ -629,6 +629,15 @@ fun MainHomeScreen(
                             dismissedMediaId = mediaMetadata?.getString(MediaMetadata.METADATA_KEY_TITLE) 
                                 ?: mediaController?.packageName
                             mediaController = null 
+                        },
+                        onClick = {
+                            mediaController?.packageName?.let { pkg ->
+                                val launchIntent = packageManager.getLaunchIntentForPackage(pkg)
+                                if (launchIntent != null) {
+                                    launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    context.startActivity(launchIntent)
+                                }
+                            }
                         }
                     )
                     Spacer(modifier = Modifier.height(16.dp))
@@ -812,9 +821,9 @@ fun HomeNavButton(
             if (badgeCount > 0) {
                 Box(
                     modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .offset(x = 10.dp, y = (-10).dp)
-                        .size(24.dp)
+                        .align(Alignment.BottomEnd)
+                        .offset(x = (-2).dp, y = (-2).dp)
+                        .size(26.dp)
                         .background(Color.Black, shape = CircleShape)
                         .border(1.dp, Color.White, shape = CircleShape),
                     contentAlignment = Alignment.Center

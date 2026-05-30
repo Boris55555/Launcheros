@@ -271,7 +271,7 @@ fun AppListScreen(
                     modifier = Modifier.clickable {
                         if (pagerState.currentPage > 0) {
                             coroutineScope.launch {
-                                pagerState.animateScrollToPage(pagerState.currentPage - 1)
+                                pagerState.scrollToPage(pagerState.currentPage - 1)
                             }
                         } else {
                             onDismiss?.invoke()
@@ -319,9 +319,9 @@ fun AppListScreen(
                     modifier = Modifier.clickable {
                         coroutineScope.launch {
                             if (pagerState.currentPage < pageCount - 1) {
-                                pagerState.animateScrollToPage(pagerState.currentPage + 1)
+                                pagerState.scrollToPage(pagerState.currentPage + 1)
                             } else {
-                                pagerState.animateScrollToPage(0)
+                                pagerState.scrollToPage(0)
                             }
                         }
                     }
@@ -486,8 +486,8 @@ fun AppGridItem(
             if (totalCount > 0) {
                 Box(
                     modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .offset(x = 8.dp, y = (-8).dp)
+                        .align(Alignment.BottomEnd)
+                        .offset(x = 0.dp, y = 0.dp)
                         .size(24.dp)
                         .background(Color.Black, shape = CircleShape)
                         .border(1.dp, Color.White, shape = CircleShape),

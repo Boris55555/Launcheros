@@ -39,7 +39,8 @@ fun MiniPlayer(
     mediaMetadata: MediaMetadata?,
     playbackState: PlaybackState?,
     mediaController: MediaController?,
-    onClose: () -> Unit
+    onClose: () -> Unit,
+    onClick: () -> Unit
 ) {
     val isPlaying = playbackState?.state == PlaybackState.STATE_PLAYING
     
@@ -49,6 +50,7 @@ fun MiniPlayer(
             .padding(horizontal = 24.dp, vertical = 4.dp) // Narrower and smaller vertical padding
             .background(Color.White, RoundedCornerShape(24.dp))
             .border(BorderStroke(2.dp, Color.Black), shape = RoundedCornerShape(24.dp))
+            .clickable { onClick() }
             .padding(vertical = 8.dp, horizontal = 16.dp) // Smaller internal padding
     ) {
         Row(
