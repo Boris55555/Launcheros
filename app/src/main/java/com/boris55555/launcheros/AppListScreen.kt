@@ -91,7 +91,8 @@ fun AppListScreen(
     usageRepository: UsageRepository? = null,
     onLockedLetterChanged: (Char?) -> Unit,
     lockedLetter: Char?,
-    onAppLaunched: ((String) -> Unit)? = null
+    onAppLaunched: ((String) -> Unit)? = null,
+    allApps: List<AppInfo> = emptyList()
 ) {
     val context = LocalContext.current
     val packageManager = context.packageManager
@@ -119,66 +120,16 @@ fun AppListScreen(
 
     val coroutineScope = rememberCoroutineScope()
 
-    val apps = remember(isPickerMode, customNames, refreshKey) {
-        val intent = Intent(Intent.ACTION_MAIN, null).apply {
-            addCategory(Intent.CATEGORY_LAUNCHER)
-        }
-        val resolveInfoList: List<ResolveInfo> = packageManager.queryIntentActivities(intent, 0)
-        
-        // Custom App Info for Sexy Launcher's own Control Panel
-        val controlPanelApp = AppInfo(
-            name = "Control Panel",
-            packageName = context.packageName,
-            isSystemApp = true
-        )
-
-        val hiddenPackages = setOf(
-            "com.android.calendar",
-            "com.android.deskclock",
-            "com.android.fmradio",
-            "com.android.documentsui",
-            "com.android.gallery3d",
-            "com.mediatek.gnss.nonframeworklbs",
-            "com.phdtaui.mainactivity",
-            "com.android.stk",
-            "com.android.quicksearchbox",
-            "com.android.settings",
-            "org.chromium.webview_shell",
-            "com.google.android.webview",
-            "com.android.webview"
-        )
-
-        val appList = resolveInfoList.mapNotNull { resolveInfo ->
-            try {
-                val pkgName = resolveInfo.activityInfo.packageName
-                // Hide the launcher itself from the list since we add it manually with a different name
-                if (pkgName == context.packageName) return@mapNotNull null
-
-                val appInfo = packageManager.getApplicationInfo(pkgName, 0)
-                val isSystemApp = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0 ||
-                        pkgName.startsWith("com.mudita")
-
-                val originalName = resolveInfo.loadLabel(packageManager).toString()
-                val customName = customNames[pkgName]
-                AppInfo(
-                    name = customName ?: originalName,
-                    packageName = pkgName,
-                    customName = customName,
-                    isSystemApp = isSystemApp
-                )
-            } catch (e: Exception) {
-                null
-            }
-        }.toMutableList()
-
-        // Add Sexy Launcher Control Panel to the list
-        appList.add(controlPanelApp)
-
-        appList.filter {
-            it.packageName !in hiddenPackages && 
+    val apps = remember(allApps, isPickerMode, hiddenApps, customNames) {
+        allApps.filter {
             it.packageName !in hiddenApps &&
-            // Don't show the launcher itself in picker mode
             (!isPickerMode || it.packageName != context.packageName)
+        }.map { app ->
+            // Ensure we use the latest custom name from the state
+            val currentCustomName = customNames[app.packageName]
+            if (currentCustomName != app.customName) {
+                app.copy(name = currentCustomName ?: app.name, customName = currentCustomName)
+            } else app
         }.sortedBy { it.name }
     }
 
@@ -424,27 +375,33 @@ fun AppGridItem(
     val packageManager = context.packageManager
     val missedCallsCount by NotificationListener.missedCallsCount.collectAsState()
 
-    val appIcon: Drawable? = try {
-        packageManager.getApplicationIcon(app.packageName)
-    } catch (e: PackageManager.NameNotFoundException) {
-        null
+    val appIcon: Drawable? = remember(app.packageName) {
+        try {
+            packageManager.getApplicationIcon(app.packageName)
+        } catch (e: PackageManager.NameNotFoundException) {
+            null
+        }
     }
 
-    val isPhoneApp = app.packageName == "com.mudita.dial" || 
-                     app.packageName.contains("dialer") || 
-                     app.packageName.contains("telecom")
-
-    val appNotifications = notifications.filter { 
-        it.packageName.equals(app.packageName, ignoreCase = true) 
-    }
-    val totalCount = if (isPhoneApp) {
-        val otherCallNotificationsCount = appNotifications.filter { it.notification.category != Notification.CATEGORY_MISSED_CALL }.sumOf { getNotificationCount(it) }
-        otherCallNotificationsCount + missedCallsCount
-    } else {
-        appNotifications.sumOf { getNotificationCount(it) }
+    val isPhoneApp = remember(app.packageName) {
+        app.packageName == "com.mudita.dial" || 
+        app.packageName.contains("dialer") || 
+        app.packageName.contains("telecom")
     }
 
-    val isMuditaApp = app.packageName.startsWith("com.mudita")
+    val totalCount = remember(notifications, missedCallsCount, isPhoneApp, app.packageName) {
+        val appNotifications = notifications.filter { 
+            it.packageName.equals(app.packageName, ignoreCase = true) 
+        }
+        if (isPhoneApp) {
+            val otherCallNotificationsCount = appNotifications.filter { it.notification.category != Notification.CATEGORY_MISSED_CALL }.sumOf { getNotificationCount(it) }
+            otherCallNotificationsCount + missedCallsCount
+        } else {
+            appNotifications.sumOf { getNotificationCount(it) }
+        }
+    }
+
+    val isMuditaApp = remember(app.packageName) { app.packageName.startsWith("com.mudita") }
 
     Column(
         modifier = Modifier
@@ -535,28 +492,34 @@ fun AppListItem(
     val missedCallsCount by NotificationListener.missedCallsCount.collectAsState()
 
     val appIcon: Drawable? = if (showAppIcons) {
-        try {
-            packageManager.getApplicationIcon(app.packageName)
-        } catch (e: PackageManager.NameNotFoundException) {
-            null
+        remember(app.packageName) {
+            try {
+                packageManager.getApplicationIcon(app.packageName)
+            } catch (e: PackageManager.NameNotFoundException) {
+                null
+            }
         }
     } else {
         null
     }
 
     // Determine if this is the phone app to include missed calls count
-    val isPhoneApp = app.packageName == "com.mudita.dial" || 
-                     app.packageName.contains("dialer") || 
-                     app.packageName.contains("telecom")
-
-    val appNotifications = notifications.filter { 
-        it.packageName.equals(app.packageName, ignoreCase = true) 
+    val isPhoneApp = remember(app.packageName) {
+        app.packageName == "com.mudita.dial" || 
+        app.packageName.contains("dialer") || 
+        app.packageName.contains("telecom")
     }
-    val totalCount = if (isPhoneApp) {
-        val otherCallNotificationsCount = appNotifications.filter { it.notification.category != Notification.CATEGORY_MISSED_CALL }.sumOf { getNotificationCount(it) }
-        otherCallNotificationsCount + missedCallsCount
-    } else {
-        appNotifications.sumOf { getNotificationCount(it) }
+
+    val totalCount = remember(notifications, missedCallsCount, isPhoneApp, app.packageName) {
+        val appNotifications = notifications.filter { 
+            it.packageName.equals(app.packageName, ignoreCase = true) 
+        }
+        if (isPhoneApp) {
+            val otherCallNotificationsCount = appNotifications.filter { it.notification.category != Notification.CATEGORY_MISSED_CALL }.sumOf { getNotificationCount(it) }
+            otherCallNotificationsCount + missedCallsCount
+        } else {
+            appNotifications.sumOf { getNotificationCount(it) }
+        }
     }
 
     val fontSize = if (isTop10Item) 30 else 24

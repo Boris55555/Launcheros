@@ -559,149 +559,84 @@ class NotificationListener : NotificationListenerService() {
 
     private fun isNotificationRelevant(sbn: StatusBarNotification, disableDuraSpeed: Boolean): Boolean {
         val packageName = sbn.packageName.lowercase(Locale.getDefault())
-        val extras = sbn.notification.extras
-        val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.lowercase(Locale.getDefault()) ?: ""
-        val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()?.lowercase(Locale.getDefault()) ?: ""
-        val subText = extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString()?.lowercase(Locale.getDefault()) ?: ""
-        val bigText = extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString()?.lowercase(Locale.getDefault()) ?: ""
-        val fullContent = "$title $text $subText $bigText"
-
-        val isOngoing = (sbn.notification.flags and Notification.FLAG_ONGOING_EVENT) != 0
-        val isGroupSummary = (sbn.notification.flags and Notification.FLAG_GROUP_SUMMARY) != 0
         
-        // Progress info
-        val hasProgressKey = extras.containsKey(Notification.EXTRA_PROGRESS)
-        val isIndeterminate = extras.getBoolean(Notification.EXTRA_PROGRESS_INDETERMINATE)
-        val progressMax = extras.getInt(Notification.EXTRA_PROGRESS_MAX, 0)
-        val progressCurrent = extras.getInt(Notification.EXTRA_PROGRESS, 0)
-        val hasActiveProgress = isIndeterminate || (progressMax > 0 && progressCurrent < progressMax)
+        // 1. Completely ignore Mudita Maps notifications as they are often persistent/buggy
+        if (packageName.contains("mudita.maps")) {
+            return false
+        }
+
+        val notification = sbn.notification
+        val extras = notification.extras
+        val category = notification.category
+        val flags = notification.flags
+
+        val isOngoing = (flags and Notification.FLAG_ONGOING_EVENT) != 0
+        val isGroupSummary = (flags and Notification.FLAG_GROUP_SUMMARY) != 0
 
         // 1. Call related (Always show)
-        val isCallRelated = sbn.notification.category == Notification.CATEGORY_MISSED_CALL ||
-                sbn.notification.category == Notification.CATEGORY_CALL ||
-                fullContent.contains("missed call") ||
+        val isCallRelated = category == Notification.CATEGORY_MISSED_CALL ||
+                category == Notification.CATEGORY_CALL ||
                 packageName.contains("dialer") ||
                 packageName.contains("telecom") ||
                 packageName.contains("phone") ||
                 packageName.contains("incallui") ||
                 packageName.contains("mudita.dial") ||
-                packageName == "com.mudita.dial" ||
-                packageName.contains("threema") ||
-                packageName.contains("whatsapp") ||
-                packageName.contains("signal")
+                packageName == "com.mudita.dial"
 
-        if (isCallRelated) {
-            return true
-        }
+        if (isCallRelated) return true
 
-        // 1.5 Message related (Always show, but filter out summaries)
-        val isMessageRelated = sbn.notification.category == Notification.CATEGORY_MESSAGE ||
+        val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.lowercase(Locale.getDefault()) ?: ""
+        val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()?.lowercase(Locale.getDefault()) ?: ""
+        
+        // Quick check for message-related content
+        val isMessageRelated = category == Notification.CATEGORY_MESSAGE ||
                 packageName.contains("messaging") ||
                 packageName.contains("sms") ||
                 packageName.contains("chat") ||
                 packageName.contains("messenger") ||
                 packageName.contains("whatsapp") ||
                 packageName.contains("telegram") ||
-                packageName.contains("threema") ||
-                packageName.contains("viber") ||
-                packageName.contains("discord") ||
-                packageName.contains("slack") ||
-                packageName.contains("matrix") ||
-                packageName.contains("element") ||
-                packageName.contains("fluffychat") ||
-                packageName.contains("sunup") ||
-                packageName == "org.mlm.mages" ||
+                packageName.contains("signal") ||
                 packageName == "com.mudita.messages" ||
-                fullContent.contains("viesti") ||
-                fullContent.contains("message") ||
-                fullContent.contains("chat")
+                title.contains("message") || text.contains("message")
 
         if (isMessageRelated) {
-            // Filter out redundant summaries for messaging apps (like "Element Classic: 1 notification")
             if (isGroupSummary) return false
-            
-            // If the content is just the app name + "notification", it's likely a duplicate/summary
-            if (text.contains("notification")) {
-                val appName = try {
-                    applicationContext.packageManager.getApplicationLabel(
-                        applicationContext.packageManager.getApplicationInfo(sbn.packageName, 0)
-                    ).toString().lowercase(Locale.getDefault())
-                } catch (e: Exception) { "" }
-                
-                if (title.contains(appName) && (text.contains("1") || text.isEmpty())) {
-                    return false
-                }
-            }
-            
             return true
         }
 
-        // 1.7 Audio/Media (Keep playing media notifications)
-        val isAudioRelated = sbn.notification.category == Notification.CATEGORY_TRANSPORT ||
-                sbn.notification.category == Notification.CATEGORY_SERVICE ||
-                packageName.contains("audio") ||
-                packageName.contains("music") ||
-                packageName.contains("player") ||
-                packageName.contains("calmcast") ||
-                packageName.contains("tubular") ||
-                packageName.contains("newpipe") ||
-                packageName.contains("antennapod") ||
-                packageName.contains("spotify") ||
-                packageName.contains("podcast") ||
-                packageName == "com.mudita.audio.player" ||
-                fullContent.contains("playing")
-
-        if (isAudioRelated && isOngoing) return true
-
-        // 2. Completely ignore Mudita Maps notifications as they are often persistent/buggy
-        if (packageName.contains("mudita.maps")) {
-            return false
+        // Audio/Media
+        if (isOngoing && (category == Notification.CATEGORY_TRANSPORT || 
+            packageName.contains("music") || packageName.contains("player") ||
+            packageName.contains("spotify") || packageName.contains("podcast"))) {
+            return true
         }
 
-        // 3. Group summaries are usually noise, but keep them for messages/calls if they are the main content
-        if (isGroupSummary && !isCallRelated && !isMessageRelated) return false
-
-        // 4. General Download/Podcast/Media related
-        val isDownloadRelated = sbn.notification.category == Notification.CATEGORY_PROGRESS ||
-                fullContent.contains("download") ||
-                fullContent.contains("podcast") ||
-                fullContent.contains("maps") ||
-                fullContent.contains("transfer") ||
-                fullContent.contains("upload") ||
-                hasProgressKey
-
-        if (isDownloadRelated) {
-            if (isOngoing) {
-                // Skip idle/finished maps downloader
-                if (fullContent.contains("maps") && (fullContent.contains("downloader") || fullContent.contains("in progress"))) {
-                    val hasNumericProgress = !isIndeterminate && progressMax > 0 && progressCurrent < progressMax
-                    if (!hasNumericProgress) return false
-                }
-                
-                // If finished (100%), hide
-                if (hasProgressKey && !isIndeterminate && progressMax > 0 && progressCurrent >= progressMax) return false
-                
+        // Progress info
+        val hasProgressKey = extras.containsKey(Notification.EXTRA_PROGRESS)
+        if (hasProgressKey) {
+            val progressMax = extras.getInt(Notification.EXTRA_PROGRESS_MAX, 0)
+            val progressCurrent = extras.getInt(Notification.EXTRA_PROGRESS, 0)
+            val isIndeterminate = extras.getBoolean(Notification.EXTRA_PROGRESS_INDETERMINATE)
+            
+            if (isOngoing && (isIndeterminate || (progressMax > 0 && progressCurrent < progressMax))) {
                 return true
             }
-            return true
+            if (!isOngoing) return true // Show finished downloads if not cleared
         }
 
-        // 5. Filtering for other types
-        if (disableDuraSpeed && (packageName.contains("duraspeed") || 
-            packageName.contains("duraspeen") ||
-            fullContent.contains("duraspeed") ||
-            fullContent.contains("duraspeen"))) {
+        if (disableDuraSpeed && packageName.contains("duraspeed")) {
             return false
         }
 
-        val isServiceOrSystem = sbn.notification.category == Notification.CATEGORY_SERVICE || 
-                               sbn.notification.category == Notification.CATEGORY_SYSTEM ||
-                               packageName.contains("android.system") ||
-                               packageName.contains("settings")
-
-        if (isOngoing && isServiceOrSystem) {
+        if (isOngoing && (category == Notification.CATEGORY_SERVICE || 
+            category == Notification.CATEGORY_SYSTEM ||
+            packageName.contains("android.system") ||
+            packageName.contains("settings"))) {
             return false
         }
+
+        if (isGroupSummary) return false
 
         return true
     }

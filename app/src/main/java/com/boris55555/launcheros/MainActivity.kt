@@ -31,6 +31,10 @@ import androidx.core.content.ContextCompat
 import com.boris55555.launcheros.birthdays.BirthdaysRepository
 import com.boris55555.launcheros.birthdays.BirthdaysScreen
 import com.boris55555.launcheros.ui.theme.LauncherosTheme
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -327,7 +331,7 @@ class FavoritesRepository(private val context: Context) {
         return list
     }
 
-    private fun getCustomNamesMap(): Map<String, String> {
+    fun getCustomNamesMap(): Map<String, String> {
         val storedSet = prefs.getStringSet(KEY_CUSTOM_NAMES, emptySet()) ?: emptySet()
         return storedSet.mapNotNull {
             val parts = it.split(":", limit = 2)
@@ -521,6 +525,71 @@ class MainActivity : ComponentActivity() {
     private val _bluetoothState = MutableStateFlow<BluetoothState>(BluetoothState.Disabled)
     val bluetoothState: StateFlow<BluetoothState> = _bluetoothState.asStateFlow()
 
+    private val _installedApps = MutableStateFlow<List<AppInfo>>(emptyList())
+    val installedApps: StateFlow<List<AppInfo>> = _installedApps.asStateFlow()
+
+    private val packageReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            loadInstalledApps()
+        }
+    }
+
+    private fun loadInstalledApps() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val intent = Intent(Intent.ACTION_MAIN, null).apply {
+                addCategory(Intent.CATEGORY_LAUNCHER)
+            }
+            val resolveInfoList = packageManager.queryIntentActivities(intent, 0)
+            val customNames = favoritesRepository.getCustomNamesMap()
+            
+            val hiddenPackages = setOf(
+                "com.android.calendar",
+                "com.android.deskclock",
+                "com.android.fmradio",
+                "com.android.documentsui",
+                "com.android.gallery3d",
+                "com.mediatek.gnss.nonframeworklbs",
+                "com.phdtaui.mainactivity",
+                "com.android.stk",
+                "com.android.quicksearchbox",
+                "com.android.settings",
+                "org.chromium.webview_shell",
+                "com.google.android.webview",
+                "com.android.webview"
+            )
+
+            val appList = resolveInfoList.mapNotNull { resolveInfo ->
+                try {
+                    val pkgName = resolveInfo.activityInfo.packageName
+                    if (pkgName == packageName || pkgName in hiddenPackages) return@mapNotNull null
+
+                    val appInfo = packageManager.getApplicationInfo(pkgName, 0)
+                    val isSystemApp = (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0 ||
+                            pkgName.startsWith("com.mudita")
+
+                    val originalName = resolveInfo.loadLabel(packageManager).toString()
+                    val customName = customNames[pkgName]
+                    AppInfo(
+                        name = customName ?: originalName,
+                        packageName = pkgName,
+                        customName = customName,
+                        isSystemApp = isSystemApp
+                    )
+                } catch (e: Exception) {
+                    null
+                }
+            }.toMutableList()
+
+            appList.add(AppInfo(
+                name = "Control Panel",
+                packageName = packageName,
+                isSystemApp = true
+            ))
+
+            _installedApps.value = appList.sortedBy { it.name }
+        }
+    }
+
     sealed class BluetoothState {
         object Disabled : BluetoothState()
         object Enabled : BluetoothState()
@@ -598,6 +667,7 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         super.onDestroy()
         unregisterReceiver(bluetoothReceiver)
+        unregisterReceiver(packageReceiver)
         unregisterReceiver(screenOffReceiver)
         favoritesRepository.cleanup()
         birthdaysRepository.cleanup()
@@ -708,6 +778,15 @@ class MainActivity : ComponentActivity() {
         }
         registerReceiver(bluetoothReceiver, bluetoothFilter)
 
+        val packageFilter = IntentFilter().apply {
+            addAction(Intent.ACTION_PACKAGE_ADDED)
+            addAction(Intent.ACTION_PACKAGE_REMOVED)
+            addAction(Intent.ACTION_PACKAGE_CHANGED)
+            addDataScheme("package")
+        }
+        registerReceiver(packageReceiver, packageFilter)
+        loadInstalledApps()
+
         val filter = android.content.IntentFilter(android.content.Intent.ACTION_SCREEN_OFF)
         registerReceiver(screenOffReceiver, filter)
 
@@ -733,6 +812,7 @@ class MainActivity : ComponentActivity() {
             var showSwipeRightAppPicker by remember { mutableStateOf(false) }
             val currentPage by _currentPage.collectAsState()
             val bluetoothState by _bluetoothState.collectAsState()
+            val installedApps by _installedApps.collectAsState()
             var lockedLetter by remember { mutableStateOf<Char?>(null) }
 
             // Centralized Back Handler
@@ -786,7 +866,8 @@ class MainActivity : ComponentActivity() {
                         onDismiss = { showPickerForIndex = null },
                         favoritesRepository = favoritesRepository,
                         onLockedLetterChanged = { lockedLetter = it },
-                        lockedLetter = lockedLetter
+                        lockedLetter = lockedLetter,
+                        allApps = installedApps
                     )
                 } else if (showAlarmAppPicker) {
                     AppListScreen(
@@ -798,7 +879,8 @@ class MainActivity : ComponentActivity() {
                         onDismiss = { showAlarmAppPicker = false },
                         favoritesRepository = favoritesRepository,
                         onLockedLetterChanged = { lockedLetter = it },
-                        lockedLetter = lockedLetter
+                        lockedLetter = lockedLetter,
+                        allApps = installedApps
                     )
                 } else if (showCalendarAppPicker) {
                     AppListScreen(
@@ -810,7 +892,8 @@ class MainActivity : ComponentActivity() {
                         onDismiss = { showCalendarAppPicker = false },
                         favoritesRepository = favoritesRepository,
                         onLockedLetterChanged = { lockedLetter = it },
-                        lockedLetter = lockedLetter
+                        lockedLetter = lockedLetter,
+                        allApps = installedApps
                     )
                 } else if (showSwipeLeftAppPicker) {
                     AppListScreen(
@@ -822,7 +905,8 @@ class MainActivity : ComponentActivity() {
                         onDismiss = { showSwipeLeftAppPicker = false },
                         favoritesRepository = favoritesRepository,
                         onLockedLetterChanged = { lockedLetter = it },
-                        lockedLetter = lockedLetter
+                        lockedLetter = lockedLetter,
+                        allApps = installedApps
                     )
                 } else if (showSwipeRightAppPicker) {
                     AppListScreen(
@@ -834,7 +918,8 @@ class MainActivity : ComponentActivity() {
                         onDismiss = { showSwipeRightAppPicker = false },
                         favoritesRepository = favoritesRepository,
                         onLockedLetterChanged = { lockedLetter = it },
-                        lockedLetter = lockedLetter
+                        lockedLetter = lockedLetter,
+                        allApps = installedApps
                     )
                 } else {
                     when (currentScreen) {
@@ -865,7 +950,8 @@ class MainActivity : ComponentActivity() {
                             usageRepository = usageRepository,
                             onLockedLetterChanged = { lockedLetter = it },
                             lockedLetter = lockedLetter,
-                            onAppLaunched = { pkg -> usageRepository.incrementUsage(pkg) }
+                            onAppLaunched = { pkg -> usageRepository.incrementUsage(pkg) },
+                            allApps = installedApps
                         )
                         Screen.Notifications -> NotificationsScreen(
                             favoritesRepository = favoritesRepository,

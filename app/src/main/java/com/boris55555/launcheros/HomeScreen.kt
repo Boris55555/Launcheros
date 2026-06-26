@@ -480,31 +480,10 @@ fun MainHomeScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // Top Status Bar (Copy of assets screenshot, no clock)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp, bottom = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    SignalIcon(signalLevel)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(text = "LTE", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.Black)
-                }
-                val batteryThresholdState by favoritesRepository.batteryThreshold.collectAsState()
-                Box(modifier = Modifier.clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null
-                ) {
-                    tempShowBatteryPercentage = true
-                }) {
-                    BatteryIcon(batteryLevel, batteryThresholdState, tempShowBatteryPercentage)
-                }
+            HomeStatusBar(favoritesRepository, tempShowBatteryPercentage, batteryLevel, signalLevel) {
+                tempShowBatteryPercentage = true
             }
 
-            // Central Section: Clock and Date
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Top,
@@ -512,177 +491,275 @@ fun MainHomeScreen(
                     .weight(1f)
                     .padding(top = 24.dp)
             ) {
-                // Next Alarm (Above Clock)
-                if (nextAlarmTime != null) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center,
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.AccessAlarm,
-                            contentDescription = "Next Alarm",
-                            modifier = Modifier.size(16.dp),
-                            tint = Color.Black
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = nextAlarmTime!! + (if (nextAlarmDay != null) " ($nextAlarmDay)" else ""),
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.Black
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                }
-
-                var currentTime by remember(use24hFormat) {
-                    val pattern = if (use24hFormat) "HH:mm" else "h:mm a"
-                    mutableStateOf(SimpleDateFormat(pattern, Locale.getDefault()).format(Calendar.getInstance().time))
-                }
-                LaunchedEffect(use24hFormat) {
-                    while (true) {
-                        val pattern = if (use24hFormat) "HH:mm" else "h:mm a"
-                        currentTime = SimpleDateFormat(pattern, Locale.getDefault()).format(Calendar.getInstance().time)
-                        delay(1000)
-                    }
-                }
-                
-                // Extra Large Clock
-                Text(
-                    text = buildAnnotatedString {
-                        if (use24hFormat) {
-                            append(currentTime)
-                        } else {
-                            val parts = currentTime.split(" ")
-                            if (parts.size >= 2) {
-                                append(parts[0])
-                                withStyle(style = SpanStyle(fontSize = 30.sp)) {
-                                    append(" " + parts[1])
-                                }
-                            } else {
-                                append(currentTime)
-                            }
-                        }
-                    },
-                    fontSize = 80.sp,
-                    fontWeight = FontWeight.Normal,
-                    color = Color.Black,
-                    modifier = Modifier.clickable {
-                        alarmAppPackage?.let { pkg ->
-                            val intent = packageManager.getLaunchIntentForPackage(pkg)
-                            if (intent != null) {
-                                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                context.startActivity(intent)
-                            }
-                        }
-                    }
+                ClockSection(
+                    use24hFormat = use24hFormat,
+                    nextAlarmTime = nextAlarmTime,
+                    nextAlarmDay = nextAlarmDay,
+                    alarmAppPackage = alarmAppPackage,
+                    calendarAppPackage = calendarAppPackage,
+                    packageManager = packageManager,
+                    context = context
                 )
-                
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                // Date
-                Box(modifier = Modifier.clickable {
-                    calendarAppPackage?.let { pkg ->
-                        val intent = packageManager.getLaunchIntentForPackage(pkg)
-                        if (intent != null) {
-                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            context.startActivity(intent)
-                        }
-                    }
-                }) {
-                    DateText()
-                }
                 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // MiniPlayer (Below Date)
-                if (mediaController != null && (playbackState?.state == PlaybackState.STATE_PLAYING || playbackState?.state == PlaybackState.STATE_PAUSED)) {
-                    MiniPlayer(
-                        mediaMetadata = mediaMetadata,
-                        playbackState = playbackState,
-                        mediaController = mediaController,
-                        onClose = { 
-                            dismissedMediaId = mediaMetadata?.getString(MediaMetadata.METADATA_KEY_TITLE) 
-                                ?: mediaController?.packageName
-                            mediaController = null 
-                        },
-                        onClick = {
-                            mediaController?.packageName?.let { pkg ->
-                                val launchIntent = packageManager.getLaunchIntentForPackage(pkg)
-                                if (launchIntent != null) {
-                                    launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                    context.startActivity(launchIntent)
-                                }
-                            }
-                        }
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                }
-                
-                // Birthdays and Notifications
-                val today = LocalDate.now()
-                val todaysBirthdays = birthdays.filter { it.date.month == today.month && it.date.dayOfMonth == today.dayOfMonth }
-                
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    NotificationIndicator(
-                        notifications = notifications,
-                        bluetoothState = bluetoothState,
-                        onClick = onShowNotificationsClicked
-                    )
-                    
-                    if (todaysBirthdays.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(16.dp))
+                MediaSection(
+                    mediaController = mediaController,
+                    playbackState = playbackState,
+                    mediaMetadata = mediaMetadata,
+                    packageManager = packageManager,
+                    context = context,
+                    onClose = { 
+                        dismissedMediaId = mediaMetadata?.getString(MediaMetadata.METADATA_KEY_TITLE) 
+                            ?: mediaController?.packageName
+                        mediaController = null 
                     }
-                    
-                    todaysBirthdays.forEach { birthday ->
-                        val age = ChronoUnit.YEARS.between(birthday.date, today)
-                        Text(
-                            text = "🎂 ${birthday.name} ($age)",
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.Black
-                        )
+                )
+                
+                NotificationSection(
+                    notifications = notifications,
+                    bluetoothState = bluetoothState,
+                    birthdays = birthdays,
+                    onShowNotificationsClicked = onShowNotificationsClicked
+                )
+            }
+
+            BottomNavigationSection(
+                phoneBadgeCount = phoneBadgeCount,
+                smsBadgeCount = smsBadgeCount,
+                onShowAllAppsClicked = onShowAllAppsClicked,
+                context = context,
+                packageManager = packageManager
+            )
+        }
+
+        val showCameraShortcut by favoritesRepository.showCameraShortcut.collectAsState()
+        if (showCameraShortcut) {
+            CameraShortcut(packageManager, context)
+        }
+
+        if (showRefreshOverlay) {
+            RefreshOverlay { showRefreshOverlay = false }
+        }
+    }
+}
+
+@Composable
+fun HomeStatusBar(
+    favoritesRepository: FavoritesRepository,
+    tempShowBatteryPercentage: Boolean,
+    batteryLevel: BatteryState?,
+    signalLevel: Int,
+    onBatteryClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp, bottom = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            SignalIcon(signalLevel)
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(text = "LTE", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+        }
+        val batteryThresholdState by favoritesRepository.batteryThreshold.collectAsState()
+        Box(modifier = Modifier.clickable(
+            interactionSource = remember { MutableInteractionSource() },
+            indication = null,
+            onClick = onBatteryClick
+        )) {
+            BatteryIcon(batteryLevel, batteryThresholdState, tempShowBatteryPercentage)
+        }
+    }
+}
+
+@Composable
+fun ClockSection(
+    use24hFormat: Boolean,
+    nextAlarmTime: String?,
+    nextAlarmDay: String?,
+    alarmAppPackage: String?,
+    calendarAppPackage: String?,
+    packageManager: PackageManager,
+    context: Context
+) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        if (nextAlarmTime != null) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+                modifier = Modifier.padding(bottom = 8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.AccessAlarm,
+                    contentDescription = "Next Alarm",
+                    modifier = Modifier.size(16.dp),
+                    tint = Color.Black
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = nextAlarmTime + (if (nextAlarmDay != null) " ($nextAlarmDay)" else ""),
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.Black
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+
+        var currentTime by remember(use24hFormat) {
+            val pattern = if (use24hFormat) "HH:mm" else "h:mm a"
+            mutableStateOf(SimpleDateFormat(pattern, Locale.getDefault()).format(Calendar.getInstance().time))
+        }
+        LaunchedEffect(use24hFormat) {
+            while (true) {
+                val pattern = if (use24hFormat) "HH:mm" else "h:mm a"
+                currentTime = SimpleDateFormat(pattern, Locale.getDefault()).format(Calendar.getInstance().time)
+                delay(1000)
+            }
+        }
+        
+        Text(
+            text = buildAnnotatedString {
+                if (use24hFormat) {
+                    append(currentTime)
+                } else {
+                    val parts = currentTime.split(" ")
+                    if (parts.size >= 2) {
+                        append(parts[0])
+                        withStyle(style = SpanStyle(fontSize = 30.sp)) {
+                            append(" " + parts[1])
+                        }
+                    } else {
+                        append(currentTime)
+                    }
+                }
+            },
+            fontSize = 80.sp,
+            fontWeight = FontWeight.Normal,
+            color = Color.Black,
+            modifier = Modifier.clickable {
+                alarmAppPackage?.let { pkg ->
+                    val intent = packageManager.getLaunchIntentForPackage(pkg)
+                    if (intent != null) {
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        context.startActivity(intent)
                     }
                 }
             }
+        )
+        
+        Spacer(modifier = Modifier.height(8.dp))
+        
+        Box(modifier = Modifier.clickable {
+            calendarAppPackage?.let { pkg ->
+                val intent = packageManager.getLaunchIntentForPackage(pkg)
+                if (intent != null) {
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(intent)
+                }
+            }
+        }) {
+            DateText()
+        }
+    }
+}
 
-            // Bottom Navigation Bar
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 16.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.Bottom
-            ) {
-                HomeNavButton(
-                    icon = Icons.Default.Phone,
-                    label = "Phone",
-                    badgeCount = phoneBadgeCount,
-                    isMudita = true,
-                    packageName = "com.mudita.dial",
-                    onClick = {
-                        val telecomManager = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
-                        val telephonyManager = context.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
-                        
-                        if (telephonyManager.callState != TelephonyManager.CALL_STATE_IDLE) {
-                            try {
-                                if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED) {
-                                    telecomManager.showInCallScreen(false)
-                                } else {
-                                    val intent = Intent(Intent.ACTION_VIEW).apply {
-                                        type = CallLog.Calls.CONTENT_TYPE
-                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                    }
-                                    context.startActivity(intent)
-                                }
-                            } catch (e: Exception) {
-                                val intent = Intent(Intent.ACTION_VIEW).apply {
-                                    type = CallLog.Calls.CONTENT_TYPE
-                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                }
-                                context.startActivity(intent)
-                            }
+@Composable
+fun MediaSection(
+    mediaController: MediaController?,
+    playbackState: PlaybackState?,
+    mediaMetadata: MediaMetadata?,
+    packageManager: PackageManager,
+    context: Context,
+    onClose: () -> Unit
+) {
+    if (mediaController != null && (playbackState?.state == PlaybackState.STATE_PLAYING || playbackState?.state == PlaybackState.STATE_PAUSED)) {
+        MiniPlayer(
+            mediaMetadata = mediaMetadata,
+            playbackState = playbackState,
+            mediaController = mediaController,
+            onClose = onClose,
+            onClick = {
+                mediaController.packageName?.let { pkg ->
+                    val launchIntent = packageManager.getLaunchIntentForPackage(pkg)
+                    if (launchIntent != null) {
+                        launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        context.startActivity(launchIntent)
+                    }
+                }
+            }
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+    }
+}
+
+@Composable
+fun NotificationSection(
+    notifications: List<android.service.notification.StatusBarNotification>,
+    bluetoothState: MainActivity.BluetoothState,
+    birthdays: List<com.boris55555.launcheros.birthdays.Birthday>,
+    onShowNotificationsClicked: () -> Unit
+) {
+    val today = LocalDate.now()
+    val todaysBirthdays = remember(birthdays, today) {
+        birthdays.filter { it.date.month == today.month && it.date.dayOfMonth == today.dayOfMonth }
+    }
+    
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        NotificationIndicator(
+            notifications = notifications,
+            bluetoothState = bluetoothState,
+            onClick = onShowNotificationsClicked
+        )
+        
+        if (todaysBirthdays.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+        
+        todaysBirthdays.forEach { birthday ->
+            val age = ChronoUnit.YEARS.between(birthday.date, today)
+            Text(
+                text = "🎂 ${birthday.name} ($age)",
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.Black
+            )
+        }
+    }
+}
+
+@Composable
+fun BottomNavigationSection(
+    phoneBadgeCount: Int,
+    smsBadgeCount: Int,
+    onShowAllAppsClicked: () -> Unit,
+    context: Context,
+    packageManager: PackageManager
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 16.dp),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.Bottom
+    ) {
+        HomeNavButton(
+            icon = Icons.Default.Phone,
+            label = "Phone",
+            badgeCount = phoneBadgeCount,
+            isMudita = true,
+            packageName = "com.mudita.dial",
+            onClick = {
+                val telecomManager = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
+                val telephonyManager = context.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
+                
+                if (telephonyManager.callState != TelephonyManager.CALL_STATE_IDLE) {
+                    try {
+                        if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED) {
+                            telecomManager.showInCallScreen(false)
                         } else {
                             val intent = Intent(Intent.ACTION_VIEW).apply {
                                 type = CallLog.Calls.CONTENT_TYPE
@@ -690,90 +767,105 @@ fun MainHomeScreen(
                             }
                             context.startActivity(intent)
                         }
+                    } catch (e: Exception) {
+                        val intent = Intent(Intent.ACTION_VIEW).apply {
+                            type = CallLog.Calls.CONTENT_TYPE
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        context.startActivity(intent)
                     }
-                )
-                
-                HomeNavButton(
-                    icon = Icons.Default.Sms,
-                    label = "SMS",
-                    badgeCount = smsBadgeCount,
-                    isMudita = true,
-                    packageName = "com.mudita.messages",
-                    onClick = {
-                        val muditaSms = "com.mudita.messages"
-                        val launchIntent = packageManager.getLaunchIntentForPackage(muditaSms)
+                } else {
+                    val intent = Intent(Intent.ACTION_VIEW).apply {
+                        type = CallLog.Calls.CONTENT_TYPE
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(intent)
+                }
+            }
+        )
+        
+        HomeNavButton(
+            icon = Icons.Default.Sms,
+            label = "SMS",
+            badgeCount = smsBadgeCount,
+            isMudita = true,
+            packageName = "com.mudita.messages",
+            onClick = {
+                val muditaSms = "com.mudita.messages"
+                val launchIntent = packageManager.getLaunchIntentForPackage(muditaSms)
+                if (launchIntent != null) {
+                    launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(launchIntent)
+                } else {
+                    val intent = Intent(Intent.ACTION_MAIN)
+                    intent.addCategory(Intent.CATEGORY_APP_MESSAGING)
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    try {
+                        context.startActivity(intent)
+                    } catch (e: Exception) {
+                        val smsIntent = Intent(Intent.ACTION_VIEW, Uri.parse("sms:"))
+                        smsIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        context.startActivity(smsIntent)
+                    }
+                }
+            }
+        )
+        
+        HomeNavButton(
+            icon = Icons.Default.Apps,
+            label = "Apps",
+            onClick = onShowAllAppsClicked
+        )
+    }
+}
+
+@Composable
+fun CameraShortcut(packageManager: PackageManager, context: Context) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize(),
+        contentAlignment = Alignment.BottomEnd
+    ) {
+        Box(
+            modifier = Modifier
+                .padding(bottom = 16.dp, end = 16.dp)
+                .size(48.dp)
+                .border(2.dp, Color.Black, CircleShape)
+                .background(Color.White, CircleShape)
+                .clickable {
+                    val intent = Intent(android.provider.MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA)
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    try {
+                        context.startActivity(intent)
+                    } catch (e: Exception) {
+                        val launchIntent = packageManager.getLaunchIntentForPackage("com.mudita.camera")
+                            ?: packageManager.getLaunchIntentForPackage("com.android.camera")
                         if (launchIntent != null) {
                             launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                             context.startActivity(launchIntent)
-                        } else {
-                            val intent = Intent(Intent.ACTION_MAIN)
-                            intent.addCategory(Intent.CATEGORY_APP_MESSAGING)
-                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            try {
-                                context.startActivity(intent)
-                            } catch (e: Exception) {
-                                // Fallback if categorical intent fails
-                                val smsIntent = Intent(Intent.ACTION_VIEW, Uri.parse("sms:"))
-                                smsIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                context.startActivity(smsIntent)
-                            }
                         }
                     }
-                )
-                
-                HomeNavButton(
-                    icon = Icons.Default.Apps,
-                    label = "Apps",
-                    onClick = onShowAllAppsClicked
-                )
-            }
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.CameraAlt,
+                contentDescription = "Camera",
+                tint = Color.Black,
+                modifier = Modifier.size(24.dp)
+            )
         }
+    }
+}
 
-        val showCameraShortcut by favoritesRepository.showCameraShortcut.collectAsState()
-        if (showCameraShortcut) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(bottom = 16.dp, end = 16.dp)
-                    .size(48.dp)
-                    .border(2.dp, Color.Black, CircleShape)
-                    .background(Color.White, CircleShape)
-                    .clickable {
-                        val intent = Intent(android.provider.MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA)
-                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        try {
-                            context.startActivity(intent)
-                        } catch (e: Exception) {
-                            // Fallback if specific intent fails
-                            val launchIntent = packageManager.getLaunchIntentForPackage("com.mudita.camera")
-                                ?: packageManager.getLaunchIntentForPackage("com.android.camera")
-                            if (launchIntent != null) {
-                                launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                context.startActivity(launchIntent)
-                            }
-                        }
-                    },
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.CameraAlt,
-                    contentDescription = "Camera",
-                    tint = Color.Black,
-                    modifier = Modifier.size(24.dp)
-                )
-            }
-        }
-
-        // Refresh overlay on top
-        if (showRefreshOverlay) {
-            Box(modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black))
-            LaunchedEffect(Unit) {
-                delay(120L)
-                showRefreshOverlay = false
-            }
-        }
+@Composable
+fun RefreshOverlay(onDismiss: () -> Unit) {
+    Box(modifier = Modifier
+        .fillMaxSize()
+        .background(Color.Black))
+    LaunchedEffect(Unit) {
+        delay(120L)
+        onDismiss()
     }
 }
 
@@ -943,11 +1035,11 @@ fun BatteryIcon(state: BatteryState?, threshold: Int, forceShow: Boolean = false
                 modifier = Modifier.size(16.dp),
                 tint = Color.Black
             )
-            Spacer(modifier = Modifier.width(2.dp))
+            Spacer(modifier = Modifier.width(4.dp))
         }
         
         if (shouldShowPercentage) {
-            Text(text = "${state.level}%", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+            Text(text = "${state.level}%", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.Black)
             Spacer(modifier = Modifier.width(6.dp))
         }
         
@@ -955,33 +1047,23 @@ fun BatteryIcon(state: BatteryState?, threshold: Int, forceShow: Boolean = false
             // Battery Body
             Box(
                 modifier = Modifier
-                    .width(35.dp)
-                    .height(18.dp)
-                    .border(2.dp, Color.Black, RoundedCornerShape(2.dp))
-                    .padding(2.dp)
+                    .width(26.dp)
+                    .height(13.dp)
+                    .border(1.5.dp, Color.Black, RoundedCornerShape(1.dp))
+                    .padding(1.5.dp)
             ) {
-                Row(
-                    modifier = Modifier.fillMaxSize(),
-                    horizontalArrangement = Arrangement.spacedBy(1.dp)
-                ) {
-                    val segments = 5
-                    val activeSegments = (state.level / (100f / segments)).toInt().coerceIn(0, segments)
-                    
-                    for (i in 1..segments) {
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
-                                .background(if (i <= activeSegments) Color.Black else Color.Transparent)
-                        )
-                    }
-                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .fillMaxWidth(state.level / 100f)
+                        .background(Color.Black)
+                )
             }
             // Battery Tip
             Box(
                 modifier = Modifier
-                    .width(3.dp)
-                    .height(8.dp)
+                    .width(2.dp)
+                    .height(5.dp)
                     .background(Color.Black, RoundedCornerShape(topEnd = 1.dp, bottomEnd = 1.dp))
             )
         }
