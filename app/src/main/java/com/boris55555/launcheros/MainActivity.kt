@@ -77,6 +77,7 @@ private const val KEY_HOME_NOTE = "home_note"
 private const val KEY_HOME_NOTE_TITLE = "home_note_title"
 private const val KEY_HIDDEN_APPS = "hidden_apps"
 private const val KEY_SHOW_CAMERA_SHORTCUT = "show_camera_shortcut"
+private const val KEY_NOTIFICATIONS_IN_STATUS_BAR = "notifications_in_status_bar"
 private const val DEFAULT_FAVORITE_COUNT = 4
 private const val DEFAULT_BATTERY_THRESHOLD = 50
 private const val DEFAULT_FONT = "Sans Serif"
@@ -178,6 +179,9 @@ class FavoritesRepository(private val context: Context) {
     private val _showCameraShortcut = MutableStateFlow(prefs.getBoolean(KEY_SHOW_CAMERA_SHORTCUT, true))
     val showCameraShortcut = _showCameraShortcut.asStateFlow()
 
+    private val _notificationsInStatusBar = MutableStateFlow(prefs.getBoolean(KEY_NOTIFICATIONS_IN_STATUS_BAR, true))
+    val notificationsInStatusBar = _notificationsInStatusBar.asStateFlow()
+
     private val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         when (key) {
             KEY_FAVORITE_COUNT, KEY_FAVORITES -> {
@@ -277,6 +281,9 @@ class FavoritesRepository(private val context: Context) {
             }
             KEY_SHOW_CAMERA_SHORTCUT -> {
                 _showCameraShortcut.value = prefs.getBoolean(KEY_SHOW_CAMERA_SHORTCUT, true)
+            }
+            KEY_NOTIFICATIONS_IN_STATUS_BAR -> {
+                _notificationsInStatusBar.value = prefs.getBoolean(KEY_NOTIFICATIONS_IN_STATUS_BAR, true)
             }
         }
     }
@@ -483,6 +490,10 @@ class FavoritesRepository(private val context: Context) {
 
     fun saveShowCameraShortcut(show: Boolean) {
         prefs.edit().putBoolean(KEY_SHOW_CAMERA_SHORTCUT, show).apply()
+    }
+
+    fun saveNotificationsInStatusBar(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_NOTIFICATIONS_IN_STATUS_BAR, enabled).apply()
     }
 
     fun toggleHiddenFromTop10(packageName: String) {

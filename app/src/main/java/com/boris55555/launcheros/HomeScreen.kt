@@ -156,6 +156,7 @@ fun MainHomeScreen(
     val homeNote by favoritesRepository.homeNote.collectAsState()
     val homeNoteTitle by favoritesRepository.homeNoteTitle.collectAsState()
     val showNotesButton by favoritesRepository.showNotesButton.collectAsState()
+    val notificationsInStatusBar by favoritesRepository.notificationsInStatusBar.collectAsState()
 
     val batteryLevel by context.batteryLevel().collectAsState(initial = null)
     val signalLevel by context.signalLevel().collectAsState(initial = 0)
@@ -480,7 +481,16 @@ fun MainHomeScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            HomeStatusBar(favoritesRepository, tempShowBatteryPercentage, batteryLevel, signalLevel) {
+            HomeStatusBar(
+                favoritesRepository,
+                tempShowBatteryPercentage,
+                batteryLevel,
+                signalLevel,
+                notifications,
+                bluetoothState,
+                notificationsInStatusBar,
+                onShowNotificationsClicked
+            ) {
                 tempShowBatteryPercentage = true
             }
 
@@ -489,7 +499,7 @@ fun MainHomeScreen(
                 verticalArrangement = Arrangement.Top,
                 modifier = Modifier
                     .weight(1f)
-                    .padding(top = 24.dp)
+                    .padding(top = 0.dp)
             ) {
                 ClockSection(
                     use24hFormat = use24hFormat,
@@ -510,8 +520,23 @@ fun MainHomeScreen(
                     packageManager = packageManager,
                     context = context,
                     onClose = { 
+                        val pkgName = mediaController?.packageName
+                        try {
+                            // 1. Stop playback
+                            mediaController?.transportControls?.stop()
+                            
+                            // 2. Try to kill the background process
+                            if (pkgName != null) {
+                                val am = context.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+                                am.killBackgroundProcesses(pkgName)
+                                Log.d("HomeScreen", "Requested kill for $pkgName")
+                            }
+                        } catch (e: Exception) {
+                            Log.e("HomeScreen", "Error closing media app", e)
+                        }
+
                         dismissedMediaId = mediaMetadata?.getString(MediaMetadata.METADATA_KEY_TITLE) 
-                            ?: mediaController?.packageName
+                            ?: pkgName
                         mediaController = null 
                     }
                 )
@@ -520,6 +545,7 @@ fun MainHomeScreen(
                     notifications = notifications,
                     bluetoothState = bluetoothState,
                     birthdays = birthdays,
+                    notificationsInStatusBar = notificationsInStatusBar,
                     onShowNotificationsClicked = onShowNotificationsClicked
                 )
             }
@@ -550,27 +576,145 @@ fun HomeStatusBar(
     tempShowBatteryPercentage: Boolean,
     batteryLevel: BatteryState?,
     signalLevel: Int,
+    notifications: List<android.service.notification.StatusBarNotification>,
+    bluetoothState: MainActivity.BluetoothState,
+    notificationsInStatusBar: Boolean,
+    onNotificationClick: () -> Unit,
     onBatteryClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 8.dp, bottom = 8.dp),
+            .padding(top = 8.dp, bottom = 0.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
             SignalIcon(signalLevel)
             Spacer(modifier = Modifier.width(8.dp))
             Text(text = "LTE", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.Black)
         }
+
+        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+            if (notificationsInStatusBar) {
+                SmallNotificationIndicator(
+                    notifications = notifications,
+                    bluetoothState = bluetoothState,
+                    onClick = onNotificationClick
+                )
+            }
+        }
+
         val batteryThresholdState by favoritesRepository.batteryThreshold.collectAsState()
-        Box(modifier = Modifier.clickable(
-            interactionSource = remember { MutableInteractionSource() },
-            indication = null,
-            onClick = onBatteryClick
-        )) {
-            BatteryIcon(batteryLevel, batteryThresholdState, tempShowBatteryPercentage)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.End,
+            modifier = Modifier.weight(1f)
+        ) {
+            Box(modifier = Modifier.clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onBatteryClick
+            )) {
+                BatteryIcon(batteryLevel, batteryThresholdState, tempShowBatteryPercentage)
+            }
+        }
+    }
+}
+
+@Composable
+fun SmallNotificationIndicator(
+    notifications: List<android.service.notification.StatusBarNotification>,
+    bluetoothState: MainActivity.BluetoothState = MainActivity.BluetoothState.Disabled,
+    onClick: () -> Unit
+) {
+    val context = LocalContext.current
+    val missedCallsCount by NotificationListener.missedCallsCount.collectAsState()
+    val unreadSmsCount by NotificationListener.unreadSmsCount.collectAsState()
+    val activeCall by NotificationListener.activeCall.collectAsState()
+
+    val groupedNotifications = remember(notifications, missedCallsCount, unreadSmsCount, activeCall, bluetoothState) {
+        val result = mutableMapOf<NotificationCategory, Int>()
+        
+        notifications.forEach { sbn ->
+            val category = getNotificationCategory(sbn, context)
+            if (category != NotificationCategory.CALLS && category != NotificationCategory.MESSAGES) {
+                val count = getNotificationCount(sbn)
+                result[category] = (result[category] ?: 0) + count
+            }
+        }
+
+        if (bluetoothState is MainActivity.BluetoothState.Connected) {
+            result[NotificationCategory.BLUETOOTH] = 1
+        }
+
+        val callNotifications = notifications.filter { getNotificationCategory(it, context) == NotificationCategory.CALLS }
+        val otherCallNotificationsCount = callNotifications.filter { it.notification.category != android.app.Notification.CATEGORY_MISSED_CALL }.sumOf { getNotificationCount(it) }
+        val hasOngoingCallNotification = callNotifications.any { (it.notification.flags and android.app.Notification.FLAG_ONGOING_EVENT) != 0 }
+
+        var finalCallCount = otherCallNotificationsCount + missedCallsCount
+        if (activeCall != null && !hasOngoingCallNotification) {
+            finalCallCount += 1
+        }
+
+        if (finalCallCount > 0) {
+            result[NotificationCategory.CALLS] = finalCallCount
+        }
+
+        val messageNotifications = notifications.filter { getNotificationCategory(it, context) == NotificationCategory.MESSAGES }
+        val messageNotificationsByApp = messageNotifications.groupBy { it.packageName }
+        val smsAppPackages = listOf("com.mudita.messages", "com.android.messaging", "com.google.android.apps.messaging")
+        
+        var smsAppNotificationsCount = 0
+        var otherMessageNotificationsCount = 0
+        
+        messageNotificationsByApp.forEach { (pkg, notifs) ->
+            val count = getSmartNotificationCount(notifs)
+            if (pkg in smsAppPackages) {
+                smsAppNotificationsCount += count
+            } else {
+                otherMessageNotificationsCount += count
+            }
+        }
+        
+        val finalMessageCount = otherMessageNotificationsCount + maxOf(unreadSmsCount, smsAppNotificationsCount)
+        if (finalMessageCount > 0) {
+            result[NotificationCategory.MESSAGES] = finalMessageCount
+        }
+
+        result
+    }
+
+    if (groupedNotifications.isNotEmpty()) {
+        Row(
+            modifier = Modifier
+                .clickable(onClick = onClick)
+                .padding(horizontal = 4.dp, vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            groupedNotifications.entries.forEachIndexed { index, entry ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = entry.key.icon,
+                        contentDescription = entry.key.name,
+                        tint = Color.Black,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    if (entry.key != NotificationCategory.BLUETOOTH) {
+                        Spacer(modifier = Modifier.width(2.dp))
+                        Text(
+                            text = entry.value.toString(),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.Black
+                        )
+                    }
+                }
+                if (index < groupedNotifications.size - 1) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                }
+            }
         }
     }
 }
@@ -585,12 +729,14 @@ fun ClockSection(
     packageManager: PackageManager,
     context: Context
 ) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.padding(top = 12.dp)
+    ) {
         if (nextAlarmTime != null) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center,
-                modifier = Modifier.padding(bottom = 8.dp)
+                horizontalArrangement = Arrangement.Center
             ) {
                 Icon(
                     imageVector = Icons.Default.AccessAlarm,
@@ -606,7 +752,7 @@ fun ClockSection(
                     color = Color.Black
                 )
             }
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(4.dp))
         }
 
         var currentTime by remember(use24hFormat) {
@@ -701,6 +847,7 @@ fun NotificationSection(
     notifications: List<android.service.notification.StatusBarNotification>,
     bluetoothState: MainActivity.BluetoothState,
     birthdays: List<com.boris55555.launcheros.birthdays.Birthday>,
+    notificationsInStatusBar: Boolean,
     onShowNotificationsClicked: () -> Unit
 ) {
     val today = LocalDate.now()
@@ -709,24 +856,28 @@ fun NotificationSection(
     }
     
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        NotificationIndicator(
-            notifications = notifications,
-            bluetoothState = bluetoothState,
-            onClick = onShowNotificationsClicked
-        )
-        
-        if (todaysBirthdays.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(16.dp))
-        }
-        
-        todaysBirthdays.forEach { birthday ->
-            val age = ChronoUnit.YEARS.between(birthday.date, today)
-            Text(
-                text = "🎂 ${birthday.name} ($age)",
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.Black
+        if (!notificationsInStatusBar) {
+            NotificationIndicator(
+                notifications = notifications,
+                bluetoothState = bluetoothState,
+                onClick = onShowNotificationsClicked
             )
+            if (todaysBirthdays.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+        }
+
+        if (todaysBirthdays.isNotEmpty()) {
+            todaysBirthdays.forEach { birthday ->
+                val age = ChronoUnit.YEARS.between(birthday.date, today)
+                Text(
+                    text = "🎂 ${birthday.name} ($age)",
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.Black
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+            }
         }
     }
 }

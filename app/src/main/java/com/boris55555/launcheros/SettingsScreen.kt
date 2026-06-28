@@ -553,6 +553,7 @@ fun HomeScreenSection(
 ) {
     val batteryThreshold by favoritesRepository.batteryThreshold.collectAsState()
     val showCameraShortcut by favoritesRepository.showCameraShortcut.collectAsState()
+    val notificationsInStatusBar by favoritesRepository.notificationsInStatusBar.collectAsState()
     var showBatteryDropdown by remember { mutableStateOf(false) }
 
     Spacer(modifier = Modifier.height(32.dp))
@@ -571,6 +572,23 @@ fun HomeScreenSection(
         Switch(
             checked = use24hFormat,
             onCheckedChange = { favoritesRepository.saveUse24hFormat(it) },
+            colors = eInkSwitchColors
+        )
+    }
+
+    HorizontalDivider(color = Color.Black)
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text("Notifications in Status Bar", fontSize = 18.sp, color = Color.Black)
+        Switch(
+            checked = notificationsInStatusBar,
+            onCheckedChange = { favoritesRepository.saveNotificationsInStatusBar(it) },
             colors = eInkSwitchColors
         )
     }
