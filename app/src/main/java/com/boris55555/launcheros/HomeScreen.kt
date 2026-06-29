@@ -477,7 +477,7 @@ fun MainHomeScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(start = 16.dp, end = 16.dp, bottom = 24.dp, top = 8.dp),
+                .padding(start = 16.dp, end = 16.dp, bottom = 12.dp, top = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
@@ -502,6 +502,7 @@ fun MainHomeScreen(
                     .padding(top = 0.dp)
             ) {
                 ClockSection(
+                    favoritesRepository = favoritesRepository,
                     use24hFormat = use24hFormat,
                     nextAlarmTime = nextAlarmTime,
                     nextAlarmDay = nextAlarmDay,
@@ -721,6 +722,7 @@ fun SmallNotificationIndicator(
 
 @Composable
 fun ClockSection(
+    favoritesRepository: FavoritesRepository,
     use24hFormat: Boolean,
     nextAlarmTime: String?,
     nextAlarmDay: String?,
@@ -808,7 +810,7 @@ fun ClockSection(
                 }
             }
         }) {
-            DateText()
+            DateText(favoritesRepository)
         }
     }
 }
@@ -893,7 +895,7 @@ fun BottomNavigationSection(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = 16.dp),
+            .padding(bottom = 8.dp),
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.Bottom
     ) {
@@ -1096,7 +1098,7 @@ fun HomeNavButton(
         Text(
             text = label,
             fontSize = 20.sp,
-            fontWeight = FontWeight.Normal,
+            fontWeight = FontWeight.Bold,
             color = Color.Black
         )
     }

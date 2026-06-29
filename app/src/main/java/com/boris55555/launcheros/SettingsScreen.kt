@@ -554,7 +554,9 @@ fun HomeScreenSection(
     val batteryThreshold by favoritesRepository.batteryThreshold.collectAsState()
     val showCameraShortcut by favoritesRepository.showCameraShortcut.collectAsState()
     val notificationsInStatusBar by favoritesRepository.notificationsInStatusBar.collectAsState()
+    val dateFormat by favoritesRepository.dateFormat.collectAsState()
     var showBatteryDropdown by remember { mutableStateOf(false) }
+    var showDateFormatDropdown by remember { mutableStateOf(false) }
 
     Spacer(modifier = Modifier.height(32.dp))
     Text("Homescreen settings", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.Black)
@@ -574,6 +576,52 @@ fun HomeScreenSection(
             onCheckedChange = { favoritesRepository.saveUse24hFormat(it) },
             colors = eInkSwitchColors
         )
+    }
+
+    HorizontalDivider(color = Color.Black)
+
+    Column {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { showDateFormatDropdown = true }
+                .padding(vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text("Date format", fontSize = 18.sp, color = Color.Black)
+            val currentLabel = when (dateFormat) {
+                "dd.MM.yyyy" -> "pp.kk.vvvv"
+                "EEEE, d. MMMM" -> "Default (Weekday, Day Month)"
+                "d. MMMM yyyy" -> "Day Month Year"
+                "yyyy-MM-dd" -> "Year-Month-Day"
+                "MM/dd/yyyy" -> "Month/Day/Year"
+                else -> dateFormat
+            }
+            Text(currentLabel, color = Color.Black)
+        }
+
+        DropdownMenu(
+            expanded = showDateFormatDropdown,
+            onDismissRequest = { showDateFormatDropdown = false },
+            modifier = Modifier.background(Color.White)
+        ) {
+            listOf(
+                "pp.kk.vvvv" to "dd.MM.yyyy",
+                "Default (Weekday, d. MMMM)" to "EEEE, d. MMMM",
+                "d. MMMM yyyy" to "d. MMMM yyyy",
+                "yyyy-MM-dd" to "yyyy-MM-dd",
+                "MM/dd/yyyy" to "MM/dd/yyyy"
+            ).forEach { (label, value) ->
+                DropdownMenuItem(
+                    text = { Text(label, color = Color.Black) },
+                    onClick = {
+                        favoritesRepository.saveDateFormat(value)
+                        showDateFormatDropdown = false
+                    }
+                )
+            }
+        }
     }
 
     HorizontalDivider(color = Color.Black)

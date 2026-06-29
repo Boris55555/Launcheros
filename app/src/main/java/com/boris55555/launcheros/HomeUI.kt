@@ -120,10 +120,11 @@ fun StickyNote(
 }
 
 @Composable
-fun DateText() {
+fun DateText(favoritesRepository: FavoritesRepository) {
+    val dateFormatStr by favoritesRepository.dateFormat.collectAsState()
     val date = remember { Calendar.getInstance().time }
-    val dateFormat = SimpleDateFormat("EEEE, d. MMMM", Locale.getDefault())
-    val dateText = dateFormat.format(date)
+    val dateFormat = remember(dateFormatStr) { SimpleDateFormat(dateFormatStr, Locale.getDefault()) }
+    val dateText = remember(dateFormat) { dateFormat.format(date) }
 
     Text(
         text = dateText,
@@ -613,6 +614,7 @@ fun FavoriteAppItem(
                     Text(
                         text = displayName,
                         fontSize = (11 + fontSizeAdjustment).sp,
+                        fontWeight = FontWeight.Bold,
                         maxLines = 1,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.offset(y = (-2).dp)
@@ -676,6 +678,7 @@ fun FavoriteAppItem(
                         Text(
                             text = displayName,
                             fontSize = (11 + fontSizeAdjustment).sp,
+                            fontWeight = FontWeight.Bold,
                             maxLines = 1,
                             textAlign = TextAlign.Center,
                             modifier = Modifier.offset(y = (-2).dp)

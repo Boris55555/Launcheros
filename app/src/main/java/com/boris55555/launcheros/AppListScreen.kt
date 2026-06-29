@@ -465,7 +465,7 @@ fun AppGridItem(
         Text(
             text = app.name,
             fontSize = 14.sp,
-            fontWeight = FontWeight.Normal,
+            fontWeight = FontWeight.Bold,
             color = Color.Black,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
