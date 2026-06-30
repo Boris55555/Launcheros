@@ -106,6 +106,7 @@ fun HomeScreen(
     onShowBirthdaysClicked: () -> Unit,
     onLaunchAppClicked: (String) -> Unit,
     onShowSettingsClicked: () -> Unit,
+    onShowRunningAppsClicked: () -> Unit,
     onEditFavorite: (Int) -> Unit,
     currentPage: Int,
     onCurrentPageChanged: (Int) -> Unit,
@@ -119,6 +120,7 @@ fun HomeScreen(
         onShowBirthdaysClicked,
         onLaunchAppClicked,
         onShowSettingsClicked,
+        onShowRunningAppsClicked,
         onEditFavorite,
         currentPage,
         onCurrentPageChanged,
@@ -136,6 +138,7 @@ fun MainHomeScreen(
     onShowBirthdaysClicked: () -> Unit,
     onLaunchAppClicked: (String) -> Unit,
     onShowSettingsClicked: () -> Unit,
+    onShowRunningAppsClicked: () -> Unit,
     onEditFavorite: (Int) -> Unit,
     currentPage: Int,
     onCurrentPageChanged: (Int) -> Unit,
@@ -157,6 +160,7 @@ fun MainHomeScreen(
     val homeNoteTitle by favoritesRepository.homeNoteTitle.collectAsState()
     val showNotesButton by favoritesRepository.showNotesButton.collectAsState()
     val notificationsInStatusBar by favoritesRepository.notificationsInStatusBar.collectAsState()
+    val enableRunningApps by favoritesRepository.enableRunningApps.collectAsState()
 
     val batteryLevel by context.batteryLevel().collectAsState(initial = null)
     val signalLevel by context.signalLevel().collectAsState(initial = 0)
@@ -473,6 +477,15 @@ fun MainHomeScreen(
                     onDoubleTap = { showRefreshOverlay = true }
                 )
             }
+            .homeScreenGestures(
+                gesturesEnabled = true,
+                favoritesArea = null,
+                onSwipeUp = {},
+                onSwipeLeft = { if (enableRunningApps) onShowRunningAppsClicked() },
+                onSwipeRight = { if (enableRunningApps) onShowRunningAppsClicked() },
+                onFavoritesSwipeUp = {},
+                onFavoritesSwipeDown = {}
+            )
     ) {
         Column(
             modifier = Modifier
@@ -556,13 +569,9 @@ fun MainHomeScreen(
                 smsBadgeCount = smsBadgeCount,
                 onShowAllAppsClicked = onShowAllAppsClicked,
                 context = context,
-                packageManager = packageManager
+                packageManager = packageManager,
+                showCameraShortcut = favoritesRepository.showCameraShortcut.collectAsState().value
             )
-        }
-
-        val showCameraShortcut by favoritesRepository.showCameraShortcut.collectAsState()
-        if (showCameraShortcut) {
-            CameraShortcut(packageManager, context)
         }
 
         if (showRefreshOverlay) {
@@ -890,7 +899,8 @@ fun BottomNavigationSection(
     smsBadgeCount: Int,
     onShowAllAppsClicked: () -> Unit,
     context: Context,
-    packageManager: PackageManager
+    packageManager: PackageManager,
+    showCameraShortcut: Boolean
 ) {
     Row(
         modifier = Modifier
@@ -964,48 +974,43 @@ fun BottomNavigationSection(
             }
         )
         
-        HomeNavButton(
-            icon = Icons.Default.Apps,
-            label = "Apps",
-            onClick = onShowAllAppsClicked
-        )
-    }
-}
-
-@Composable
-fun CameraShortcut(packageManager: PackageManager, context: Context) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize(),
-        contentAlignment = Alignment.BottomEnd
-    ) {
-        Box(
-            modifier = Modifier
-                .padding(bottom = 16.dp, end = 16.dp)
-                .size(48.dp)
-                .border(2.dp, Color.Black, CircleShape)
-                .background(Color.White, CircleShape)
-                .clickable {
-                    val intent = Intent(android.provider.MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA)
-                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    try {
-                        context.startActivity(intent)
-                    } catch (e: Exception) {
-                        val launchIntent = packageManager.getLaunchIntentForPackage("com.mudita.camera")
-                            ?: packageManager.getLaunchIntentForPackage("com.android.camera")
-                        if (launchIntent != null) {
-                            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            context.startActivity(launchIntent)
-                        }
-                    }
-                },
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = Icons.Default.CameraAlt,
-                contentDescription = "Camera",
-                tint = Color.Black,
-                modifier = Modifier.size(24.dp)
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            if (showCameraShortcut) {
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .border(2.dp, Color.Black, CircleShape)
+                        .background(Color.White, CircleShape)
+                        .clickable {
+                            val intent = Intent(android.provider.MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA)
+                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            try {
+                                context.startActivity(intent)
+                            } catch (e: Exception) {
+                                val launchIntent = packageManager.getLaunchIntentForPackage("com.mudita.camera")
+                                    ?: packageManager.getLaunchIntentForPackage("com.android.camera")
+                                if (launchIntent != null) {
+                                    launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    context.startActivity(launchIntent)
+                                }
+                            }
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CameraAlt,
+                        contentDescription = "Camera",
+                        tint = Color.Black,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+            
+            HomeNavButton(
+                icon = Icons.Default.Apps,
+                label = "Apps",
+                onClick = onShowAllAppsClicked
             )
         }
     }

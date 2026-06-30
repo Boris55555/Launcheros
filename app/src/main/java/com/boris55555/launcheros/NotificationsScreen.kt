@@ -268,7 +268,7 @@ fun NotificationsScreen(
 
             if (otherItems.isEmpty() && activeCallInfo == null) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(text = "No notifications", color = Color.Gray)
+                    Text(text = "No notifications", color = Color.Black)
                 }
             } else {
                 LazyColumn(modifier = Modifier.weight(1f)) {

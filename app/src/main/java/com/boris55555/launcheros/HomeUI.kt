@@ -689,7 +689,7 @@ fun FavoriteAppItem(
                         Text(
                             text = previewText,
                             fontSize = (14 + fontSizeAdjustment).sp,
-                            color = Color.Gray,
+                            color = Color.Black,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier
@@ -749,7 +749,7 @@ fun FavoriteAppItem(
                 Text(
                     text = previewText,
                     fontSize = (14 + fontSizeAdjustment).sp,
-                    color = Color.Gray,
+                    color = Color.Black,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.padding(start = if (appIcon != null) 56.dp else 8.dp, bottom = 8.dp)

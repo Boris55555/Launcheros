@@ -83,7 +83,7 @@ fun HiddenAppsScreen(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(name, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.Black)
-                            Text(pkg, fontSize = 12.sp, color = Color.Gray)
+                            Text(pkg, fontSize = 12.sp, color = Color.Black)
                         }
                         IconButton(onClick = { favoritesRepository.toggleHiddenApp(pkg) }) {
                             Icon(Icons.Default.Visibility, contentDescription = "Unhide", tint = Color.Black)

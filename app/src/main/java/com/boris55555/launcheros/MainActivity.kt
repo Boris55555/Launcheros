@@ -79,6 +79,7 @@ private const val KEY_HIDDEN_APPS = "hidden_apps"
 private const val KEY_SHOW_CAMERA_SHORTCUT = "show_camera_shortcut"
 private const val KEY_NOTIFICATIONS_IN_STATUS_BAR = "notifications_in_status_bar"
 private const val KEY_DATE_FORMAT = "date_format"
+private const val KEY_ENABLE_RUNNING_APPS = "enable_running_apps"
 private const val DEFAULT_FAVORITE_COUNT = 4
 private const val DEFAULT_BATTERY_THRESHOLD = 50
 private const val DEFAULT_FONT = "Sans Serif"
@@ -186,6 +187,9 @@ class FavoritesRepository(private val context: Context) {
     private val _dateFormat = MutableStateFlow(prefs.getString(KEY_DATE_FORMAT, "EEEE, d. MMMM") ?: "EEEE, d. MMMM")
     val dateFormat = _dateFormat.asStateFlow()
 
+    private val _enableRunningApps = MutableStateFlow(prefs.getBoolean(KEY_ENABLE_RUNNING_APPS, true))
+    val enableRunningApps = _enableRunningApps.asStateFlow()
+
     private val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         when (key) {
             KEY_FAVORITE_COUNT, KEY_FAVORITES -> {
@@ -291,6 +295,9 @@ class FavoritesRepository(private val context: Context) {
             }
             KEY_DATE_FORMAT -> {
                 _dateFormat.value = prefs.getString(KEY_DATE_FORMAT, "EEEE, d. MMMM") ?: "EEEE, d. MMMM"
+            }
+            KEY_ENABLE_RUNNING_APPS -> {
+                _enableRunningApps.value = prefs.getBoolean(KEY_ENABLE_RUNNING_APPS, true)
             }
         }
     }
@@ -507,6 +514,10 @@ class FavoritesRepository(private val context: Context) {
         prefs.edit().putString(KEY_DATE_FORMAT, format).apply()
     }
 
+    fun saveEnableRunningApps(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_ENABLE_RUNNING_APPS, enabled).apply()
+    }
+
     fun toggleHiddenFromTop10(packageName: String) {
         val current = _hiddenFromTop10.value.toMutableSet()
         if (current.contains(packageName)) {
@@ -536,7 +547,8 @@ enum class Screen {
     Notifications,
     Settings,
     Birthdays,
-    HiddenApps
+    HiddenApps,
+    RecentApps
 }
 
 class MainActivity : ComponentActivity() {
@@ -549,6 +561,17 @@ class MainActivity : ComponentActivity() {
 
     private val _installedApps = MutableStateFlow<List<AppInfo>>(emptyList())
     val installedApps: StateFlow<List<AppInfo>> = _installedApps.asStateFlow()
+
+    private val _killedApps = MutableStateFlow<Set<String>>(emptySet())
+    val killedApps: StateFlow<Set<String>> = _killedApps.asStateFlow()
+
+    fun markAppKilled(packageName: String) {
+        _killedApps.value = _killedApps.value + packageName
+    }
+
+    private fun markAppLaunched(packageName: String) {
+        _killedApps.value = _killedApps.value - packageName
+    }
 
     private val packageReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -835,6 +858,7 @@ class MainActivity : ComponentActivity() {
             val currentPage by _currentPage.collectAsState()
             val bluetoothState by _bluetoothState.collectAsState()
             val installedApps by _installedApps.collectAsState()
+            val killedAppsByManager by _killedApps.collectAsState()
             var lockedLetter by remember { mutableStateOf<Char?>(null) }
 
             // Centralized Back Handler
@@ -953,6 +977,7 @@ class MainActivity : ComponentActivity() {
                             onShowBirthdaysClicked = { navigateTo(Screen.Birthdays) },
                             onLaunchAppClicked = { packageName ->
                                 usageRepository.incrementUsage(packageName)
+                                markAppLaunched(packageName)
                                 val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
                                 if (launchIntent != null) {
                                     launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -960,6 +985,7 @@ class MainActivity : ComponentActivity() {
                                 }
                             },
                             onShowSettingsClicked = { navigateTo(Screen.Settings) },
+                            onShowRunningAppsClicked = { navigateTo(Screen.RecentApps) },
                             onEditFavorite = { index -> showPickerForIndex = index },
                             currentPage = currentPage,
                             onCurrentPageChanged = { _currentPage.value = it },
@@ -972,7 +998,10 @@ class MainActivity : ComponentActivity() {
                             usageRepository = usageRepository,
                             onLockedLetterChanged = { lockedLetter = it },
                             lockedLetter = lockedLetter,
-                            onAppLaunched = { pkg -> usageRepository.incrementUsage(pkg) },
+                            onAppLaunched = { pkg -> 
+                                usageRepository.incrementUsage(pkg)
+                                markAppLaunched(pkg)
+                            },
                             allApps = installedApps
                         )
                         Screen.Notifications -> NotificationsScreen(
@@ -993,6 +1022,11 @@ class MainActivity : ComponentActivity() {
                         Screen.HiddenApps -> HiddenAppsScreen(
                             favoritesRepository = favoritesRepository,
                             onDismiss = { _currentScreen.value = Screen.Settings }
+                        )
+                        Screen.RecentApps -> RecentAppsScreen(
+                            onDismiss = { _currentScreen.value = Screen.Home },
+                            killedApps = killedAppsByManager,
+                            onKillApp = { markAppKilled(it) }
                         )
                     }
                 }

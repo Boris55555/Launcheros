@@ -61,6 +61,7 @@ import androidx.core.content.ContextCompat
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
+import android.os.Build
 
 @Composable
 fun SettingsScreen(
@@ -98,6 +99,15 @@ fun SettingsScreen(
     var hasExactAlarmPermission by remember {
         mutableStateOf(
             (context.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager).canScheduleExactAlarms()
+        )
+    }
+    var hasUsageStatsPermission by remember {
+        mutableStateOf(
+            run {
+                val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as android.app.AppOpsManager
+                val mode = appOps.unsafeCheckOpNoThrow(android.app.AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), context.packageName)
+                mode == android.app.AppOpsManager.MODE_ALLOWED
+            }
         )
     }
     val alarmAppPackage by favoritesRepository.alarmAppPackage.collectAsState()
@@ -179,6 +189,13 @@ fun SettingsScreen(
                 hasExactAlarmPermission = alarmEnabled
             }
 
+            val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as android.app.AppOpsManager
+            val usageMode = appOps.unsafeCheckOpNoThrow(android.app.AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), context.packageName)
+            val usageEnabled = usageMode == android.app.AppOpsManager.MODE_ALLOWED
+            if (usageEnabled != hasUsageStatsPermission) {
+                hasUsageStatsPermission = usageEnabled
+            }
+
             delay(1000)
         }
     }
@@ -236,6 +253,7 @@ fun SettingsScreen(
                 hasSmsPermission = hasSmsPermission,
                 hasBluetoothPermission = hasBluetoothPermission,
                 hasExactAlarmPermission = hasExactAlarmPermission,
+                hasUsageStatsPermission = hasUsageStatsPermission,
                 phonePermissionLauncher = phonePermissionLauncher,
                 contactsPermissionLauncher = contactsPermissionLauncher,
                 smsPermissionLauncher = smsPermissionLauncher,
@@ -335,6 +353,7 @@ fun PermissionSection(
     hasSmsPermission: Boolean,
     hasBluetoothPermission: Boolean,
     hasExactAlarmPermission: Boolean,
+    hasUsageStatsPermission: Boolean,
     phonePermissionLauncher: ManagedActivityResultLauncher<Array<String>, Map<String, Boolean>>,
     contactsPermissionLauncher: ManagedActivityResultLauncher<String, Boolean>,
     smsPermissionLauncher: ManagedActivityResultLauncher<String, Boolean>,
@@ -343,7 +362,8 @@ fun PermissionSection(
     var isExpanded by remember { mutableStateOf(false) }
     val allGranted = hasNotificationPermission && hasPhonePermission && 
                      hasContactsPermission && hasSmsPermission && 
-                     hasBluetoothPermission && hasExactAlarmPermission
+                     hasBluetoothPermission && hasExactAlarmPermission &&
+                     hasUsageStatsPermission
 
     Column(
         modifier = Modifier
@@ -427,6 +447,20 @@ fun PermissionSection(
                     }
                 }
             )
+
+            PermissionRow(
+                title = "Usage Access",
+                isGranted = hasUsageStatsPermission,
+                onClick = {
+                    try {
+                        context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
+                            data = Uri.fromParts("package", context.packageName, null)
+                        })
+                    } catch (e: Exception) {
+                        context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
+                    }
+                }
+            )
         }
     }
 
@@ -444,7 +478,7 @@ fun PermissionRow(title: String, isGranted: Boolean, onClick: () -> Unit) {
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Text(title, fontSize = 18.sp, color = Color.Black)
-        Text(if (isGranted) "Granted" else "Tap to grant", color = if (isGranted) Color.Black else Color.Gray)
+        Text(if (isGranted) "Granted" else "Tap to grant", color = Color.Black)
     }
     HorizontalDivider(color = Color.Black)
 }
@@ -554,6 +588,7 @@ fun HomeScreenSection(
     val batteryThreshold by favoritesRepository.batteryThreshold.collectAsState()
     val showCameraShortcut by favoritesRepository.showCameraShortcut.collectAsState()
     val notificationsInStatusBar by favoritesRepository.notificationsInStatusBar.collectAsState()
+    val enableRunningApps by favoritesRepository.enableRunningApps.collectAsState()
     val dateFormat by favoritesRepository.dateFormat.collectAsState()
     var showBatteryDropdown by remember { mutableStateOf(false) }
     var showDateFormatDropdown by remember { mutableStateOf(false) }
@@ -574,6 +609,40 @@ fun HomeScreenSection(
         Switch(
             checked = use24hFormat,
             onCheckedChange = { favoritesRepository.saveUse24hFormat(it) },
+            colors = eInkSwitchColors
+        )
+    }
+
+    HorizontalDivider(color = Color.Black)
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text("Enable Running Apps gesture", fontSize = 18.sp, color = Color.Black)
+        Switch(
+            checked = enableRunningApps,
+            onCheckedChange = { favoritesRepository.saveEnableRunningApps(it) },
+            colors = eInkSwitchColors
+        )
+    }
+
+    HorizontalDivider(color = Color.Black)
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text("Notifications in Status Bar", fontSize = 18.sp, color = Color.Black)
+        Switch(
+            checked = notificationsInStatusBar,
+            onCheckedChange = { favoritesRepository.saveNotificationsInStatusBar(it) },
             colors = eInkSwitchColors
         )
     }
@@ -622,23 +691,6 @@ fun HomeScreenSection(
                 )
             }
         }
-    }
-
-    HorizontalDivider(color = Color.Black)
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text("Notifications in Status Bar", fontSize = 18.sp, color = Color.Black)
-        Switch(
-            checked = notificationsInStatusBar,
-            onCheckedChange = { favoritesRepository.saveNotificationsInStatusBar(it) },
-            colors = eInkSwitchColors
-        )
     }
 
     HorizontalDivider(color = Color.Black)
